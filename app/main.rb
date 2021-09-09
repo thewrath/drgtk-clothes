@@ -7,6 +7,8 @@ require 'app/vectormath.rb'
 
 Width = 1280
 Height = 720
+DrawPoints = true
+DrawLines = false
 
 Down = {x: 0, y: -0.5}
 
@@ -56,6 +58,12 @@ def tick args
   # State init
   init(args)
 
+  once args do |args|
+    # (0..2).each do |i|
+      generate_ropes_col(args, 20, 10)
+    # end
+  end
+
   # Print FPS
   args.state.debug_labels << "Ctrl + left click to add dynamic linked point"
   args.state.debug_labels << "Ctrl + right click to add static linked point"
@@ -68,14 +76,16 @@ def tick args
 
   draw_debug_labels args
 
-  draw_sticks args
-  draw_points args
+  draw_sticks args if DrawLines
+  draw_points args if DrawPoints
 
   handle_click args
 
   args.state.play = !args.state.play if args.inputs.keyboard.a
 
   simulate args if args.state.play
+
+  args.state.show_debug = !args.state.show_debug if args.inputs.keyboard.d 
 end
 
 def simulate args
@@ -168,7 +178,32 @@ def handle_click args
   end
 end
 
+def generate_ropes_col(args, w, h, global_offset=640)
+  points = args.state.points
+  sticks = args.state.sticks
+
+  (0..h).each do |r|
+    last_point = nil
+    (0..w).each do |c|
+      locked = !last_point
+      x_offset = (100*c)
+      x_offset = -x_offset if r.even? 
+      new_point = Point.new(global_offset + x_offset, Height - 50 - (20 * r), locked)
+      points << new_point
+
+      if last_point && new_point then
+        sticks << Stick.new(last_point, new_point)
+      end
+
+      last_point = new_point
+    end
+  end
+end
+
 def draw_debug_labels args
+  # Is debug mode enable ?
+  return if !args.state.show_debug
+
   args.state.debug_labels.each_with_index do |l, i|
     args.outputs.debug << [50, Height - (50 + (30*i)), l, 255, 0, 0].labels
   end
@@ -186,6 +221,16 @@ def init args
   args.state.sticks ||= []
   args.state.dragged_point ||= nil
 
+  args.state.once_init ||= false
+
   args.state.play ||= false
 
+  args.state.show_debug ||= true
+end
+
+def once args
+  if !args.state.once_init then
+    args.state.once_init = true
+    yield args
+  end
 end
