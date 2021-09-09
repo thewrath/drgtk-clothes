@@ -28,7 +28,7 @@ class Vec2
     @y = vec2_other.y
     self
   end
-
+  
   def add!(vec2_rhs)
     @x += vec2_rhs.x
     @y += vec2_rhs.y

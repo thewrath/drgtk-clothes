@@ -3,29 +3,27 @@
   Algorithm comes from the following video : 
   https://www.youtube.com/watch?v=PGk0rnyTa1U 
 =end
-
+require 'app/vectormath.rb'
 
 Width = 1280
 Height = 720
 
 Down = {x: 0, y: -1}
-Gravity = 0.1
 
 class Point
-  attr_accessor :x, :y, :last_x, :last_y, :locked
+  attr_accessor :position, :last_position, :locked, :a_live
 
   def initialize x, y, locked
-    @x = x
-    @y = y
-    @last_x = x
-    @last_y = y
+    @position = Vec2.new(x, y)
+    @last_position = @position
     @locked = locked
+    @a_live = true
   end
 
   def render args
     c = {r: 255, g: 0, b: 0}
     c = {r: 255, g: 255, b: 255} unless @locked 
-    args.outputs.solids << [@x, @y, 10, 10, c.r, c.g, c.b]
+    args.outputs.solids << [@position.x, @position.y, 10, 10, c.r, c.g, c.b]
   end
 end
 
@@ -35,27 +33,19 @@ class Stick
   def initialize pointA, pointB
     @pointA = pointA
     @pointB = pointB
-    @initial_length = length
-  end
-
-  def a
-    @pointA.x - @pointB.x
-  end
-
-  def b
-    @pointA.y - @pointB.y
-  end
-
-  def length
-    Math.sqrt(a**2 + b**2)
+    @initial_length = diff.length
   end
 
   def render args
-    args.outputs.lines << [@pointA.x, @pointA.y, @pointB.x, @pointB.y, 255, 255, 255]
+    args.outputs.lines << [@pointA.position.x, @pointA.position.y, @pointB.position.x, @pointB.position.y, 255, 255, 255]
   end
 
-  def norm
-    {x: a / length, y: b / length}
+  def a_live
+    @pointA.a_live && @pointB.a_live 
+  end
+
+  def diff
+    @pointA.position.sub(@pointB.position)
   end
 end
 
@@ -82,37 +72,43 @@ def tick args
 end
 
 def simulate args
-
   args.state.points.each do |p|
+    # If point isn't lock => update it's position
     if !p.locked then
-      before = {x: p.x, y: p.y}
+      before = Vec2.new().set_from!(p.position)
 
-      p.x += p.x - p.last_x
-      p.y += p.y - p.last_y
-    
-      p.x += Down.x * Gravity
-      p.y += Down.y * Gravity
+      p.position.add!(p.position.sub(p.last_position))
+
+      # Apply gravity to the point
+      p.position.add!(Down)    
       
-      p.last_x = before.x
-      p.last_y = before.y
+      # Update last position
+      p.last_position = before
     end
+
+    # If point is out of screen we destroy it
+    p.a_live = false if p.position.y < 0
   end
 
-  (0..100).each do |i|
+  (0..10).each do |i|
     args.state.sticks.each do |s|
-      center = {x: (s.pointA.x + s.pointB.x) / 2, y: (s.pointA.y + s.pointB.y) / 2}
-      dir = s.norm
+      # Compute center of stick
+      center = s.pointA.position.add(s.pointB.position).div_scalar(2)
+      dir = s.diff.normalize
+      
+      # For each extrimity of the stick, we update its position if it is not fixed
       if !s.pointA.locked then
-        s.pointA.x = center.x + dir.x * s.initial_length / 2
-        s.pointA.y = center.y + dir.y * s.initial_length / 2
+        s.pointA.position = center.add(dir.mul_scalar(s.initial_length).div_scalar(2))
       end
 
       if !s.pointB.locked then
-        s.pointB.x = center.x - dir.x * s.initial_length / 2
-        s.pointB.y = center.y - dir.y * s.initial_length / 2
+        s.pointB.position = center.sub(dir.mul_scalar(s.initial_length).div_scalar(2))
       end
     end
   end
+
+  args.state.sticks.select! {|s| s.a_live}
+  args.state.points.select! {|p| p.a_live}
 end
 
 def draw_points args
