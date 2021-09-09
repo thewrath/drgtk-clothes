@@ -8,22 +8,24 @@ require 'app/vectormath.rb'
 Width = 1280
 Height = 720
 
-Down = {x: 0, y: -1}
+Down = {x: 0, y: -0.5}
 
 class Point
-  attr_accessor :position, :last_position, :locked, :a_live
+  attr_accessor :position, :last_position, :size, :locked, :a_live, :is_dragged
 
   def initialize x, y, locked
     @position = Vec2.new(x, y)
     @last_position = @position
+    @size = Vec2.new(10, 10)
     @locked = locked
     @a_live = true
+    @is_dragged = false
   end
 
   def render args
     c = {r: 255, g: 0, b: 0}
     c = {r: 255, g: 255, b: 255} unless @locked 
-    args.outputs.solids << [@position.x, @position.y, 10, 10, c.r, c.g, c.b]
+    args.outputs.solids << [@position.x, @position.y, @size.x, @size.y, c.r, c.g, c.b]
   end
 end
 
@@ -55,6 +57,11 @@ def tick args
   init(args)
 
   # Print FPS
+  args.state.debug_labels << "Ctrl + left click to add dynamic linked point"
+  args.state.debug_labels << "Ctrl + right click to add static linked point"
+  args.state.debug_labels << "Space + left click to add dynamic point"
+  args.state.debug_labels << "Space + right click to add static point"
+  args.state.debug_labels << ""
   args.state.debug_labels << "FPS : #{args.gtk.current_framerate.round}"
   args.state.debug_labels << "Mouse : (#{args.inputs.mouse.x}, #{args.inputs.mouse.y})"
   args.state.debug_labels << "Number of points : #{args.state.points.length}"
@@ -121,24 +128,43 @@ def draw_sticks args
   args.state.sticks.each do |s|
     s.render args
   end
-end
+end 
 
 def handle_click args
   points = args.state.points
   sticks = args.state.sticks
 
-  if args.inputs.mouse.click then
+  # Ctrl (add point with stick) or Space (just add point)
+  if (args.inputs.mouse.click) && (args.inputs.keyboard.space || args.inputs.keyboard.control) then
     mouse_position = args.inputs.mouse
     
     last_point = points.last
 
-    locked = args.inputs.keyboard.alt
+    locked = args.inputs.mouse.button_right 
     new_point = Point.new(mouse_position.x, mouse_position.y, locked)
     points << new_point
 
     if last_point && new_point && !args.inputs.keyboard.space then
       sticks << Stick.new(last_point, new_point)
     end
+  end
+
+  # Use mouse to drag point and move it in space
+  if args.inputs.mouse.click then
+    if !args.state.dragged_point then
+      args.state.dragged_point = args.state.points.find do |p|
+        args.inputs.mouse.inside_rect? [p.position.x, p.position.y, p.size.x, p.size.y]
+      end
+      args.state.dragged_point.is_dragged = true
+    else
+      args.state.dragged_point.is_dragged = false
+      args.state.dragged_point = nil
+    end
+  end
+
+  if args.state.dragged_point then
+    args.state.dragged_point.position = Vec2.new(args.inputs.mouse.x, args.inputs.mouse.y)
+    args.state.dragged_point.last_position = args.state.dragged_point.position
   end
 end
 
@@ -158,6 +184,7 @@ def init args
   # Current program stuff
   args.state.points ||= []
   args.state.sticks ||= []
+  args.state.dragged_point ||= nil
 
   args.state.play ||= false
 
